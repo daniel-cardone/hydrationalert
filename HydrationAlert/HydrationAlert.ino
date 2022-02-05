@@ -1,3 +1,10 @@
+/**
+ * 
+ * Hydration Alert
+ * Designed for Arduino Nano (ATmega328P Old Bootloader)
+ * 
+ */
+
 #define SMAARTWIRE_CALIBRATION_SEQ        0x55
 
 // TMP107 register map
@@ -134,6 +141,28 @@ void setInterval(byte lastAddr, byte convRate) {
   tmp107.write(convRate);
 }
 
+void adjustDelay() {
+  // get current temperature and convert to farenheit
+  float tempC = getTemp(addr[0]);
+  float tempF = tempC * 1.8 + 32;
+
+  // apply the function to get the time in minutes
+  // -0.0015x^2 + 30
+  float res = -0.0015 * pow(tempF, 2) + 30;
+
+  // apply a minimum delay of 8 minutes and maximum of 30
+  float mins = constrain(res, 8, 30);
+
+  // convert delay time in minute to milliseconds and adjust timeout
+  unsigned long delayMs = mins * 60000;
+  timeout = delayMs;
+  shouldGetTemp = false;
+
+  // serial monitoring
+  Serial.println(tempF);
+  Serial.println(mins);
+}
+
 void setup() {
   pinMode(outputPin, OUTPUT);
   pinMode(inputPin, INPUT);
@@ -157,32 +186,32 @@ void setup() {
 
   // set measurement intervals of all sensors to 100 ms
   setInterval(addr[NUMBER_OF_SENSORS - 1], TMP107_CONV_RATE_100_MS);
+
+  // start by getting the current temperature right away
+  adjustDelay();
 }
 
 void loop() {
+  // get current system time
   unsigned long currentMillis = millis();
 
+  // if the button is pressed
   if (digitalRead(inputPin) == HIGH) {
-    if (shouldGetTemp) {
-      float tempC = getTemp(addr[0]);
-      float tempF = tempC * 1.8 + 32;
-      float res = -0.0015 * pow(tempF, 2) + 30;
-      float mins = constrain(res, 8, 30);
-      unsigned long delayMs = mins * 60000;
-      timeout = delayMs;
-      shouldGetTemp = false;
-
-      Serial.println(tempF);
-      Serial.println(mins);
+    if (shouldGetTemp) { // only the first time the input changes (1 instead of 0)
+      adjustDelay(); // adjust the delay based on temperature
     }
+
+    // stop alerting
     canAlert = false;
     digitalWrite(outputPin, LOW);
     outputState = LOW;
     previousMillis = currentMillis;
   } else {
+    // if the button is not pressed, set a flag to prepare for it to change
     shouldGetTemp = true;
   }
 
+  // if enough time has passed, cycle through vibration sequence
   if (canAlert && currentMillis - previousMillis >= delays[currentDelayIndex]) {
     previousMillis = currentMillis;
 
@@ -194,6 +223,7 @@ void loop() {
 
     outputState = !outputState;
 
+    // go to next step in delay sequence
     currentDelayIndex++;
     if (currentDelayIndex >= sizeof(delays) / sizeof(delays[0])) {
       currentDelayIndex = 0;
