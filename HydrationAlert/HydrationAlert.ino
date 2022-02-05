@@ -60,7 +60,7 @@
 int outputPin = 4;
 int inputPin = 7;
 SmaartWire tmp107(A0);
-bool canAlert = true;
+bool canAlert = false;
 bool shouldGetTemp = true;
 
 // array to hold sensor addresses
